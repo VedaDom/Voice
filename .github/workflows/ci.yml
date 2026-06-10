@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: macOS app (build + tests)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build --package-path app
+      - name: Test
+        run: swift test --package-path app
+
+  engine:
+    name: Engine (pytest)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install engine dependencies
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python \
+            "git+https://github.com/Blaizzy/mlx-audio.git" \
+            soundfile numpy pytest
+      - name: Run tests
+        run: .venv/bin/python -m pytest engine/tests/ -q

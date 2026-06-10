@@ -1,0 +1,5 @@
+# Default owners for everything — review required on all PRs.
+* @VedaDom
+
+# Engine correctness is especially sensitive.
+/engine/ @VedaDom

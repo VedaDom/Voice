@@ -1,0 +1,27 @@
+# build artifacts
+app/.build/
+app/runtime/
+build/
+dist/
+Voice.app/
+*.dmg
+*.iconset/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# user data & private recordings — never commit
+session*.wav
+session*.jsonl
+session*.txt
+audio/
+worker.err.log
+
+# design exports & scratch
+design-exports/
+
+# macOS
+.DS_Store

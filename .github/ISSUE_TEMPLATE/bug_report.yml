@@ -1,0 +1,38 @@
+name: Bug report
+description: Something in Voice isn't working right
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Mac & macOS
+      placeholder: "MacBook Pro M2, macOS 15.2"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Voice version
+      placeholder: "0.1.0 (menu panel ▸ Settings ▸ About)"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Dictation accuracy, Hotkeys, Overlay, Paste/insert, Library, Settings, Install/update, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Engine log (optional)
+      description: "`~/Library/Application Support/Voice/worker.err.log` — remove anything private."
+      render: text

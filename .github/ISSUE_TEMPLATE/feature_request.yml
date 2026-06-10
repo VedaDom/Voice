@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest an improvement to Voice
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation where Voice falls short today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed solution
+      description: How should it work? Sketches welcome.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: This feature can work fully on-device (Voice never sends audio or text anywhere).
+          required: true

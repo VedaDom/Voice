@@ -1,0 +1,50 @@
+name: Release
+
+# Push a version tag to publish a release with the DMG installer:
+#   git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    name: Build Voice.dmg
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Stamp version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          /usr/bin/sed -i '' \
+            "s|<key>CFBundleShortVersionString</key><string>[^<]*</string>|<key>CFBundleShortVersionString</key><string>${VERSION}</string>|" \
+            app/bundle.sh
+          echo "version=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build embedded Python runtime
+        run: |
+          uv python install 3.12
+          ./app/make_runtime.sh
+
+      - name: Build app bundle
+        run: ./app/bundle.sh release
+        # Unsigned CI build: macOS shows "unverified developer" on first open.
+        # Maintainers with the Developer ID certificate can sign + notarize
+        # locally via scripts/notarize.sh and replace the asset.
+
+      - name: Build DMG
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python numpy pillow dmgbuild
+          ./app/make_dmg.sh
+          mv Voice.dmg "Voice-${version}.dmg"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Voice-*.dmg
+          generate_release_notes: true
