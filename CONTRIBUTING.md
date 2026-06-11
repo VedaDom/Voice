@@ -7,7 +7,7 @@ Thanks for helping build private, on-device dictation. This guide covers setup, 
 Requirements: Apple Silicon Mac, macOS 14+, Xcode 15+ (command line tools), [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone git@github.com:Wistfare/voice.git && cd voice
+git clone git@github.com:VedaDom/Voice.git && cd voice
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python \
     "git+https://github.com/Blaizzy/mlx-audio.git" soundfile numpy pytest

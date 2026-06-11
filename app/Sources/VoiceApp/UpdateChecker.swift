@@ -19,7 +19,7 @@ final class UpdateChecker: ObservableObject {
     @Published var installing = false
     @Published var error: String?
 
-    static let repo = "Wistfare/voice"
+    static let repo = "VedaDom/Voice"
     private static let lastCheckKey = "LastUpdateCheck"
 
     func checkDaily() {

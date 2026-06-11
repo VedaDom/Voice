@@ -471,7 +471,8 @@ class Engine:
     def _run_cleanup_llm(self, text, opts=None):
         opts = opts or {}
         sys_rules = ["Fix spelling and small speech-recognition errors in dictated text.",
-                     "Keep the wording, tone and meaning exactly the same."]
+                     "Keep the wording, tone and meaning exactly the same.",
+                     "Never add, remove, reorder or rephrase words — only correct errors."]
         if opts.get("grammar", False):
             sys_rules.append("Also fix grammar, casing and punctuation.")
         words = [w for w in (opts.get("words") or []) if w][:40]

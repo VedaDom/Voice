@@ -497,18 +497,66 @@ private struct ModelsPage: View {
 
 private struct VocabularyPage: View {
     @ObservedObject var settings: SettingsStore
+    @State private var tab: Tab = .dictionary
     @State private var newWord = ""
     @State private var newSpoken = ""
     @State private var newWritten = ""
 
-    var body: some View {
-        SettingsSection(title: "DICTIONARY", topPadding: 14)
-        Text("Add names, jargon and acronyms. Voice uses these to keep special words spelled right.")
-            .font(Theme.inter(12.5))
-            .foregroundStyle(Theme.ink2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 12)
+    enum Tab: String, CaseIterable {
+        case dictionary = "Dictionary"
+        case replacements = "Replacements"
+        case suggestions = "Suggestions"
+    }
 
+    private func count(_ t: Tab) -> Int {
+        switch t {
+        case .dictionary: return settings.vocabulary.words.count
+        case .replacements: return settings.vocabulary.replacements.count
+        case .suggestions: return settings.vocabulary.suggestions.count
+        }
+    }
+
+    var body: some View {
+        // segmented tabs keep each list manageable as it grows
+        HStack(spacing: 3) {
+            ForEach(Tab.allCases, id: \.self) { t in
+                let active = tab == t
+                HStack(spacing: 6) {
+                    Text(t.rawValue)
+                        .font(Theme.inter(12.5, active ? .semibold : .medium))
+                        .foregroundStyle(active ? Theme.ink : Theme.ink2)
+                    if count(t) > 0 {
+                        Text("\(count(t))")
+                            .font(Theme.inter(10.5, .semibold))
+                            .foregroundStyle(active ? Theme.accent : Theme.ink3)
+                    }
+                }
+                .padding(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(active ? Theme.doc : .clear)
+                        .shadow(color: .black.opacity(active ? 0.06 : 0), radius: 2, y: 1)
+                )
+                .overlay(RoundedRectangle(cornerRadius: 7)
+                    .stroke(active ? Theme.line : .clear, lineWidth: 1))
+                .contentShape(Rectangle())
+                .onTapGesture { tab = t }
+            }
+            Spacer()
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.pane))
+        .padding(.top, 16)
+
+        switch tab {
+        case .dictionary: dictionary
+        case .replacements: replacements
+        case .suggestions: suggestions
+        }
+    }
+
+    // ------------------------------------------------------------ dictionary
+    @ViewBuilder private var dictionary: some View {
         HStack(spacing: 9) {
             Image(systemName: "plus")
                 .font(.system(size: 12))
@@ -516,6 +564,8 @@ private struct VocabularyPage: View {
             TextField("Add a word or phrase…", text: $newWord)
                 .textFieldStyle(.plain)
                 .font(Theme.inter(13))
+                .foregroundStyle(Theme.ink)
+                .tint(Theme.accent)
                 .onSubmit(addWord)
             Text("⏎ Enter")
                 .font(Theme.inter(11.5, .medium))
@@ -526,27 +576,30 @@ private struct VocabularyPage: View {
         .padding(EdgeInsets(top: 11, leading: 13, bottom: 11, trailing: 13))
         .background(RoundedRectangle(cornerRadius: 9).fill(Theme.bg))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(Theme.line, lineWidth: 1))
+        .padding(.top, 16)
 
-        FlowLayout(spacing: 8) {
-            ForEach(settings.vocabulary.words, id: \.self) { w in
-                WordChip(word: w) {
-                    settings.vocabulary.words.removeAll { $0 == w }
+        if settings.vocabulary.words.isEmpty {
+            emptyHint("Names, jargon and acronyms you add here are used to keep special words spelled right.")
+        } else {
+            FlowLayout(spacing: 8) {
+                ForEach(settings.vocabulary.words, id: \.self) { w in
+                    WordChip(word: w) {
+                        settings.vocabulary.words.removeAll { $0 == w }
+                    }
                 }
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 10)
-
-        SettingsSection(title: "REPLACEMENTS")
-        Text("Spoken phrases that should always become specific text — “voice dot app” → “voice.app”.")
-            .font(Theme.inter(12.5))
-            .foregroundStyle(Theme.ink2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 12)
+            .padding(.vertical, 12)
+        }
+    }
 
+    // ---------------------------------------------------------- replacements
+    @ViewBuilder private var replacements: some View {
         HStack(spacing: 8) {
             TextField("When I say…", text: $newSpoken)
                 .textFieldStyle(.plain).font(Theme.inter(13))
+                .foregroundStyle(Theme.ink)
+                .tint(Theme.accent)
                 .padding(EdgeInsets(top: 9, leading: 12, bottom: 9, trailing: 12))
                 .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bg))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line, lineWidth: 1))
@@ -555,48 +608,47 @@ private struct VocabularyPage: View {
                 .foregroundStyle(Theme.ink3)
             TextField("Write…", text: $newWritten)
                 .textFieldStyle(.plain).font(Theme.inter(13))
+                .foregroundStyle(Theme.ink)
+                .tint(Theme.accent)
                 .padding(EdgeInsets(top: 9, leading: 12, bottom: 9, trailing: 12))
                 .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bg))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line, lineWidth: 1))
                 .onSubmit(addReplacement)
             SettingsButton(label: "Add") { addReplacement() }
         }
+        .padding(.top, 16)
 
-        VStack(spacing: 0) {
-            ForEach(settings.vocabulary.replacements) { r in
-                HStack(spacing: 10) {
-                    Text(r.spoken).font(Theme.inter(13, .medium)).foregroundStyle(Theme.ink)
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 10)).foregroundStyle(Theme.ink3)
-                    Text(r.written).font(Theme.inter(13, .medium)).foregroundStyle(Theme.accent2)
-                    Spacer()
-                    Button {
-                        settings.vocabulary.replacements.removeAll { $0.id == r.id }
-                    } label: {
-                        Image(systemName: "xmark")
+        if settings.vocabulary.replacements.isEmpty {
+            emptyHint("Spoken phrases that should always become specific text — “voice dot app” → “voice.app”.")
+        } else {
+            VStack(spacing: 0) {
+                ForEach(settings.vocabulary.replacements) { r in
+                    HStack(spacing: 10) {
+                        Text(r.spoken).font(Theme.inter(13, .medium)).foregroundStyle(Theme.ink)
+                        Image(systemName: "arrow.right")
                             .font(.system(size: 10)).foregroundStyle(Theme.ink3)
+                        Text(r.written).font(Theme.inter(13, .medium)).foregroundStyle(Theme.accent2)
+                        Spacer()
+                        Button {
+                            settings.vocabulary.replacements.removeAll { $0.id == r.id }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10)).foregroundStyle(Theme.ink3)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 11)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.line2).frame(height: 1) }
                 }
-                .padding(.vertical, 11)
-                .overlay(alignment: .bottom) { Rectangle().fill(Theme.line2).frame(height: 1) }
             }
+            .padding(.top, 8)
         }
-        .padding(.top, 8)
+    }
 
-        SettingsSection(title: "SUGGESTIONS")
-        Text("New words Voice noticed in your dictations. Add the ones worth keeping.")
-            .font(Theme.inter(12.5))
-            .foregroundStyle(Theme.ink2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 10)
-
+    // ----------------------------------------------------------- suggestions
+    @ViewBuilder private var suggestions: some View {
         if settings.vocabulary.suggestions.isEmpty {
-            Text("Nothing collected yet.")
-                .font(Theme.inter(12.5))
-                .foregroundStyle(Theme.ink3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 8)
+            emptyHint("New words Voice notices in your dictations show up here — add the ones worth keeping.")
         } else {
             FlowLayout(spacing: 8) {
                 ForEach(settings.vocabulary.suggestions, id: \.self) { w in
@@ -628,7 +680,17 @@ private struct VocabularyPage: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 16)
         }
+    }
+
+    private func emptyHint(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.inter(12.5))
+            .foregroundStyle(Theme.ink3)
+            .lineSpacing(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 18)
     }
 
     private func addWord() {
@@ -779,13 +841,13 @@ private struct AboutPage: View {
             HStack(spacing: 7) {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                Text("Open source · github.com/Wistfare/voice")
+                Text("Open source · github.com/VedaDom/Voice")
                     .font(Theme.inter(12, .semibold))
             }
             .foregroundStyle(Color(hex: 0x1F7A45))
             .padding(EdgeInsets(top: 6, leading: 13, bottom: 6, trailing: 13))
             .background(Capsule().fill(Color(hex: 0xE7F2EA)))
-            .onTapGesture { open("https://github.com/Wistfare/voice") }
+            .onTapGesture { open("https://github.com/VedaDom/Voice") }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 26)
@@ -794,15 +856,15 @@ private struct AboutPage: View {
         SettingsRow(title: "Software update",
                     description: "Releases are published on GitHub.") {
             SettingsButton(label: "Check now") {
-                open("https://github.com/Wistfare/voice/releases")
+                open("https://github.com/VedaDom/Voice/releases")
             }
         }
 
         SettingsSection(title: "RESOURCES", topPadding: 28)
-        linkRow("What’s new", "https://github.com/Wistfare/voice/releases")
-        linkRow("Help & support", "https://github.com/Wistfare/voice/issues")
-        linkRow("Acknowledgements", "https://github.com/Wistfare/voice#acknowledgements")
-        linkRow("Star Voice on GitHub", "https://github.com/Wistfare/voice")
+        linkRow("What’s new", "https://github.com/VedaDom/Voice/releases")
+        linkRow("Help & support", "https://github.com/VedaDom/Voice/issues")
+        linkRow("Acknowledgements", "https://github.com/VedaDom/Voice#acknowledgements")
+        linkRow("Star Voice on GitHub", "https://github.com/VedaDom/Voice")
 
         Text("Made on-device · © 2026 Wistfare")
             .font(Theme.inter(12))

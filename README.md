@@ -2,8 +2,8 @@
 
 **Private, on-device dictation for macOS.** Hold a key, speak, release — your words land in whatever app you're typing in. No account, no cloud, nothing ever leaves your Mac.
 
-[![CI](https://github.com/Wistfare/voice/actions/workflows/ci.yml/badge.svg)](https://github.com/Wistfare/voice/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Wistfare/voice?include_prereleases)](https://github.com/Wistfare/voice/releases)
+[![CI](https://github.com/VedaDom/Voice/actions/workflows/ci.yml/badge.svg)](https://github.com/VedaDom/Voice/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/VedaDom/Voice?include_prereleases)](https://github.com/VedaDom/Voice/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20·%20Apple%20Silicon-black)
 
@@ -17,7 +17,7 @@
 
 ## Install
 
-1. Download **Voice.dmg** from the [latest release](https://github.com/Wistfare/voice/releases).
+1. Download **Voice.dmg** from the [latest release](https://github.com/VedaDom/Voice/releases).
 2. Drag **Voice** into **Applications** and open it.
    *If macOS warns about an unverified developer: right-click → Open, or System Settings ▸ Privacy & Security ▸ "Open Anyway".*
 3. First launch downloads the speech model (~1.2 GB, one time) and walks you through Microphone + Accessibility permissions.
@@ -53,7 +53,7 @@ Measured on an M5 (24 GB): streaming at ~0.2× real-time (5× headroom) in the 3
 ## Build from source
 
 ```bash
-git clone https://github.com/Wistfare/voice.git && cd voice
+git clone https://github.com/VedaDom/Voice.git && cd voice
 
 # 1. engine environment (Python 3.12 via uv)
 uv venv --python 3.12 .venv
