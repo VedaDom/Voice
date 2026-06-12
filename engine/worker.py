@@ -49,11 +49,14 @@ sys.path.insert(0, str(_HERE.parent))
 
 MODEL = "mlx-community/nemotron-3.5-asr-streaming-0.6b"
 MODEL_BYTES = 1_270_000_000  # approx total download, for progress estimation
-# Cleanup model tiers (Settings ▸ Models). "balanced" is light and safe;
-# "best" is the bake-off winner for context-aware homophone fixes.
+# Cleanup model tiers (Settings ▸ Models), picked by bake-off
+# (tools/cleanup_bakeoff.py): "balanced" is light and safe, "best" matches the
+# bigger models on standard fixes, "max" is the only one that repairs
+# context-dependent homophones ("the result is long" → "wrong").
 CLEANUP_MODELS = {
     "balanced": ("mlx-community/LFM2.5-350M-8bit", 380_000_000),
-    "best": ("mlx-community/LFM2.5-1.2B-Instruct-4bit", 750_000_000),
+    "best": ("mlx-community/gemma-4-e2b-it-4bit", 1_500_000_000),
+    "max": ("mlx-community/gemma-4-E4B-it-qat-4bit", 2_800_000_000),
 }
 DEFAULT_CLEANUP_TIER = "balanced"
 SR = 16000

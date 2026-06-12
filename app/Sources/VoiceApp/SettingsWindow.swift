@@ -414,18 +414,15 @@ private struct ModelsPage: View {
             .padding(.bottom, 12)
 
         ModelCard(icon: "sparkles",
-                  title: settings.cleanupTier == "best"
-                      ? "Liquid LFM2.5-1.2B" : "Liquid LFM2.5-350M",
+                  title: cleanupModelName,
                   tag: "Optional",
-                  subtitle: settings.cleanupTier == "best"
-                      ? "750 MB · context-aware fixes, fully on-device"
-                      : "350 MB · light & fast cleanup, fully on-device") {
+                  subtitle: cleanupModelSubtitle) {
             cleanupTrailing
         }
         .padding(.bottom, 4)
 
         SettingsRow(title: "Cleanup quality",
-                    description: "Best uses a larger model that can fix misheard words from context (e.g. “long” → “wrong”).") {
+                    description: "Max is the only tier that fixes misheard words from context (e.g. “long” → “wrong”); Best is the sweet spot. Larger tiers need more memory.") {
             SelectPill(selection: Binding(
                 get: { settings.cleanupTier },
                 set: { newTier in
@@ -439,7 +436,9 @@ private struct ModelsPage: View {
                         state.cleanupState = .none
                     }
                 }
-            ), options: [("balanced", "Balanced · 350M"), ("best", "Best · 1.2B")])
+            ), options: [("balanced", "Balanced · 350M"),
+                         ("best", "Best · Gemma 4 E2B"),
+                         ("max", "Max · Gemma 4 E4B")])
         }
 
         SettingsRow(title: "Fix spelling & typos",
@@ -483,6 +482,22 @@ private struct ModelsPage: View {
                     .appendingPathComponent(".cache/huggingface/hub")
                 NSWorkspace.shared.activateFileViewerSelecting([dir])
             }
+        }
+    }
+
+    private var cleanupModelName: String {
+        switch settings.cleanupTier {
+        case "best": return "Gemma 4 E2B"
+        case "max": return "Gemma 4 E4B"
+        default: return "Liquid LFM2.5-350M"
+        }
+    }
+
+    private var cleanupModelSubtitle: String {
+        switch settings.cleanupTier {
+        case "best": return "1.5 GB · strong fixes, fully on-device"
+        case "max": return "2.8 GB · context-aware fixes · 16 GB+ Mac recommended"
+        default: return "350 MB · light & fast cleanup, fully on-device"
         }
     }
 

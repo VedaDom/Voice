@@ -36,8 +36,11 @@ else
 fi
 
 echo "installing engine dependencies…"
+# mlx-lm is pinned to a git SHA until Gemma-4 E-series support ships in a
+# PyPI release (needed by the "best"/"max" cleanup tiers)
 uv pip install --python "$RUNTIME/bin/python3" --no-cache \
-    "git+https://github.com/Blaizzy/mlx-audio.git" soundfile numpy
+    "git+https://github.com/Blaizzy/mlx-audio.git" soundfile numpy \
+    "mlx-lm @ git+https://github.com/ml-explore/mlx-lm@c89c93c33db9b213de9abcfff57c89ed2817a361"
 
 echo "precompiling bytecode (read-only bundles)…"
 "$RUNTIME/bin/python3" -m compileall -q "$RUNTIME/lib" 2>/dev/null || true
