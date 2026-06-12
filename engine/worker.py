@@ -49,8 +49,13 @@ sys.path.insert(0, str(_HERE.parent))
 
 MODEL = "mlx-community/nemotron-3.5-asr-streaming-0.6b"
 MODEL_BYTES = 1_270_000_000  # approx total download, for progress estimation
-CLEANUP_MODEL = "mlx-community/LFM2.5-350M-8bit"
-CLEANUP_BYTES = 380_000_000
+# Cleanup model tiers (Settings ▸ Models). "balanced" is light and safe;
+# "best" is the bake-off winner for context-aware homophone fixes.
+CLEANUP_MODELS = {
+    "balanced": ("mlx-community/LFM2.5-350M-8bit", 380_000_000),
+    "best": ("mlx-community/LFM2.5-1.2B-Instruct-4bit", 750_000_000),
+}
+DEFAULT_CLEANUP_TIER = "balanced"
 SR = 16000
 BLOCK_S = 0.05  # 50 ms blocks -> 20 Hz level events
 DATA_DIR = Path(
@@ -121,6 +126,7 @@ class Engine:
         # cleanup LLM (loaded on demand)
         self.cleanup_model = None
         self.cleanup_tokenizer = None
+        self.cleanup_tier = DEFAULT_CLEANUP_TIER
         self.shutting_down = False
 
     # ---------------------------------------------------------------- thread
@@ -156,7 +162,7 @@ class Engine:
         elif cmd == "retranscribe":
             self._retranscribe(msg)
         elif cmd == "cleanup_setup":
-            self._cleanup_setup()
+            self._cleanup_setup(msg)
         elif cmd == "shutdown":
             self._end(discard=True)
             self.shutting_down = True
@@ -223,6 +229,7 @@ class Engine:
         self.agc = AGC(SR)
         self.raw = []
         self.fed = []
+        self.pending = []
         self.paused = False
         self.active = True
         self.t0 = time.time()
@@ -254,7 +261,7 @@ class Engine:
             return
         self._close_mic()
         # consume what was already captured, then idle
-        while not self.audio_q.empty():
+        while self.pending or not self.audio_q.empty():
             self._pump_audio(stopping=True)
         self.paused = True
         state("paused")
@@ -266,13 +273,22 @@ class Engine:
         self._open_mic()
         state("recording")
 
+    # Never feed the model more than this per iteration: commands (stop,
+    # cancel, pause) are only read BETWEEN iterations, so an unbounded batch
+    # under backlog (e.g. thermal throttling) would make the app unresponsive.
+    MAX_BATCH_S = 2.0
+
     def _pump_audio(self, stopping=False):
         try:
-            blocks = [self.audio_q.get(timeout=0.05)]
+            self.pending.append(self.audio_q.get(timeout=0.0 if self.pending else 0.05))
         except queue.Empty:
-            return
+            pass
         while not self.audio_q.empty():
-            blocks.append(self.audio_q.get_nowait())
+            self.pending.append(self.audio_q.get_nowait())
+        if not self.pending:
+            return
+        cap = max(1, int(self.MAX_BATCH_S / BLOCK_S))
+        blocks, self.pending = self.pending[:cap], self.pending[cap:]
         fed = []
         for b in blocks:
             self.raw.append(b)
@@ -322,9 +338,15 @@ class Engine:
         if not self.active:
             return
         self._close_mic()
-        if not discard:
-            # drain the tail — all on this thread
+        if discard:
+            # instant: throw the backlog away, no model work
+            self.pending = []
             while not self.audio_q.empty():
+                self.audio_q.get_nowait()
+        else:
+            # let the UI show progress while a long backlog is chewed through
+            state("transcribing")
+            while self.pending or not self.audio_q.empty():
                 self._pump_audio(stopping=True)
 
             if self.streamer is not None:                       # live mode
@@ -389,10 +411,16 @@ class Engine:
                   "error": str(e)[:200]})
 
     # ---------------------------------------------------------------- cleanup
-    def _cleanup_cache_size(self):
+    def _cleanup_repo(self, tier=None):
+        return CLEANUP_MODELS.get(tier or self.cleanup_tier,
+                                  CLEANUP_MODELS[DEFAULT_CLEANUP_TIER])
+
+    def _cleanup_cache_size(self, repo):
         base = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+        slug = "models--" + repo.replace("/", "--")
         total = 0
-        for d in (base / "hub").glob("models--mlx-community--LFM2*"):
+        d = base / "hub" / slug
+        if d.exists():
             for p in d.rglob("*"):
                 try:
                     if p.is_file():
@@ -401,33 +429,38 @@ class Engine:
                     pass
         return total
 
-    def _cleanup_setup(self):
-        if self.cleanup_model is not None:
-            emit({"event": "cleanup_state", "state": "ready"})
+    def _cleanup_setup(self, msg=None):
+        tier = (msg or {}).get("tier", self.cleanup_tier)
+        repo, approx = self._cleanup_repo(tier)
+        if self.cleanup_model is not None and tier == self.cleanup_tier:
+            emit({"event": "cleanup_state", "state": "ready", "tier": tier})
             return
         try:
-            already = self._cleanup_cache_size() > CLEANUP_BYTES * 0.9
-            emit({"event": "cleanup_state", "state": "downloading", "pct": 0.0})
+            already = self._cleanup_cache_size(repo) > approx * 0.9
+            emit({"event": "cleanup_state", "state": "downloading", "pct": 0.0,
+                  "tier": tier})
             done = threading.Event()
             if not already:
                 def poll():
                     while not done.is_set():
-                        pct = min(self._cleanup_cache_size() / CLEANUP_BYTES, 0.99)
+                        pct = min(self._cleanup_cache_size(repo) / approx, 0.99)
                         emit({"event": "cleanup_state", "state": "downloading",
-                              "pct": round(pct, 3)})
+                              "pct": round(pct, 3), "tier": tier})
                         done.wait(0.5)
                 threading.Thread(target=poll, daemon=True).start()
 
             from mlx_lm import load as llm_load
 
-            model, tokenizer = llm_load(CLEANUP_MODEL)
+            model, tokenizer = llm_load(repo)
             done.set()
             self.cleanup_model = model
             self.cleanup_tokenizer = tokenizer
+            self.cleanup_tier = tier
             self._run_cleanup_llm("ok")  # tiny warmup, compiles kernels
-            emit({"event": "cleanup_state", "state": "ready"})
+            emit({"event": "cleanup_state", "state": "ready", "tier": tier})
         except Exception as e:  # noqa: BLE001
-            emit({"event": "cleanup_state", "state": "error", "message": str(e)[:200]})
+            emit({"event": "cleanup_state", "state": "error", "message": str(e)[:200],
+                  "tier": tier})
 
     def _maybe_cleanup(self, text, opts):
         """Optional LLM cleanup pass. A 350M model can drift on long inputs, so
@@ -443,12 +476,15 @@ class Engine:
 
             sentences = re.findall(r"[^.!?]+[.!?]?\s*", text)
             out = []
-            for s in sentences:
+            for i, s in enumerate(sentences):
                 s_clean = s.strip()
                 if len(s_clean.split()) < 2:
                     out.append(s_clean)
                     continue
-                fixed = self._run_cleanup_llm(s_clean, opts).strip().strip('"')
+                # the PREVIOUS sentence gives the model the discourse it needs
+                # to fix homophones ("long" vs "wrong") without rewriting
+                context = out[-1] if out else (sentences[i - 1].strip() if i else "")
+                fixed = self._run_cleanup_llm(s_clean, opts, context).strip().strip('"')
                 # character-level similarity: typo fixes stay ~0.85+, while
                 # rewrites fall to ~0.3-0.6 (word-level would punish every
                 # corrected word as a full mismatch)
@@ -462,15 +498,21 @@ class Engine:
 
     # few-shot examples anchor the small model to "correct, don't rewrite"
     _CLEANUP_SHOTS = [
-        {"role": "user", "content": "i beleive the meting is tomorow at nine"},
+        {"role": "user",
+         "content": "Context: We reviewed the budget.\nText: i beleive the meting is tomorow at nine"},
         {"role": "assistant", "content": "I believe the meeting is tomorrow at nine."},
-        {"role": "user", "content": "can you send me the figma link for the new on boarding flow"},
+        {"role": "user",
+         "content": "Context: The answer it gave is not right.\nText: it keeps giving the long answer every time"},
+        {"role": "assistant", "content": "It keeps giving the wrong answer every time."},
+        {"role": "user",
+         "content": "Context: (none)\nText: can you send me the figma link for the new on boarding flow"},
         {"role": "assistant", "content": "Can you send me the Figma link for the new onboarding flow?"},
     ]
 
-    def _run_cleanup_llm(self, text, opts=None):
+    def _run_cleanup_llm(self, text, opts=None, context=""):
         opts = opts or {}
-        sys_rules = ["Fix spelling and small speech-recognition errors in dictated text.",
+        sys_rules = ["Fix spelling, homophone and small speech-recognition errors in dictated text.",
+                     "Use the context to pick the word the speaker intended when the transcript misheard it.",
                      "Keep the wording, tone and meaning exactly the same.",
                      "Never add, remove, reorder or rephrase words — only correct errors."]
         if opts.get("grammar", False):
@@ -480,11 +522,16 @@ class Engine:
             sys_rules.append("Known correct spellings: " + ", ".join(words) + ".")
         sys_rules.append("Output only the corrected text.")
 
+        user = f"Context: {context or '(none)'}\nText: {text}"
         messages = ([{"role": "system", "content": " ".join(sys_rules)}]
                     + self._CLEANUP_SHOTS
-                    + [{"role": "user", "content": text}])
-        prompt = self.cleanup_tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True)
+                    + [{"role": "user", "content": user}])
+        try:
+            prompt = self.cleanup_tokenizer.apply_chat_template(
+                messages, add_generation_prompt=True, enable_thinking=False)
+        except (TypeError, ValueError):
+            prompt = self.cleanup_tokenizer.apply_chat_template(
+                messages, add_generation_prompt=True)
 
         from mlx_lm import generate
         kwargs = {"max_tokens": min(512, len(text.split()) * 3 + 32), "verbose": False}

@@ -413,12 +413,34 @@ private struct ModelsPage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 12)
 
-        ModelCard(icon: "sparkles", title: "Liquid LFM2-350M",
+        ModelCard(icon: "sparkles",
+                  title: settings.cleanupTier == "best"
+                      ? "Liquid LFM2.5-1.2B" : "Liquid LFM2.5-350M",
                   tag: "Optional",
-                  subtitle: "350 MB · cleans up text after dictation, fully on-device") {
+                  subtitle: settings.cleanupTier == "best"
+                      ? "750 MB · context-aware fixes, fully on-device"
+                      : "350 MB · light & fast cleanup, fully on-device") {
             cleanupTrailing
         }
         .padding(.bottom, 4)
+
+        SettingsRow(title: "Cleanup quality",
+                    description: "Best uses a larger model that can fix misheard words from context (e.g. “long” → “wrong”).") {
+            SelectPill(selection: Binding(
+                get: { settings.cleanupTier },
+                set: { newTier in
+                    guard newTier != settings.cleanupTier else { return }
+                    settings.cleanupTier = newTier
+                    if case .ready = state.cleanupState {
+                        // switch models: re-run setup for the new tier
+                        state.cleanupState = .downloading(0)
+                        onCleanupDownload()
+                    } else {
+                        state.cleanupState = .none
+                    }
+                }
+            ), options: [("balanced", "Balanced · 350M"), ("best", "Best · 1.2B")])
+        }
 
         SettingsRow(title: "Fix spelling & typos",
                     description: "Correct misheard or mistyped words.") {

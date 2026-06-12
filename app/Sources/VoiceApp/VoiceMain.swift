@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updates = UpdateChecker()
     let hotkeys = HotkeyMonitor()
     private var focusAnchor: FocusAnchor?
+    private var lastLevelAt = Date()
 
     static let onboardedKey = "VoiceOnboarded"
 
@@ -33,7 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status.onOpenSettings = { [weak self] in self?.settingsWindow.show() }
         settingsWindow.onCleanupDownload = { [weak self] in
             self?.state.cleanupState = .downloading(0)
-            self?.bridge.send(["cmd": "cleanup_setup"])
+            self?.bridge.send(["cmd": "cleanup_setup",
+                               "tier": SettingsStore.shared.cleanupTier])
         }
         library.onRetranscribe = { [weak self] note in self?.retranscribe(note) }
         updates.checkDaily()
@@ -76,13 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bridge.setup()
         if SettingsStore.shared.cleanupModelInstalled {
             // already on disk from a previous run — just load it
-            bridge.send(["cmd": "cleanup_setup"])
+            bridge.send(["cmd": "cleanup_setup",
+                         "tier": SettingsStore.shared.cleanupTier])
         }
 
         // keep accessibility status fresh (user may grant it in System Settings)
+        // + watchdog: a recording session with no level events for 6 s means the
+        // worker died or desynced — reset the UI instead of a stuck red icon
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.state.accessibilityTrusted = Paster.accessibilityTrusted
+                guard let self else { return }
+                self.state.accessibilityTrusted = Paster.accessibilityTrusted
+                if self.state.sessionActive, self.state.engine == .recording,
+                   Date().timeIntervalSince(self.lastLevelAt) > 6 {
+                    NSLog("Voice: watchdog — no audio for 6s during a session, resetting")
+                    self.cancelDictation()
+                }
             }
         }
     }
@@ -138,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "level":
             state.level = e["norm"] as? Double ?? 0
+            lastLevelAt = Date()
         case "partial":
             state.partial = e["text"] as? String ?? ""
         case "final":
@@ -176,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard state.engine == .ready, !state.sessionActive else { return }
         let settings = SettingsStore.shared
         state.sessionActive = true
+        lastLevelAt = Date()   // watchdog baseline for this session
         state.partial = ""
         focusAnchor = FocusAnchor.capture()   // remember where the user was typing
         bridge.send([
@@ -228,6 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlay.hide()
         state.partial = ""
         state.level = 0
+        // reset the menu bar icon immediately — the worker's "ready" echo
+        // confirms a moment later, but the user must see idle NOW
+        state.engine = .ready
+        status.refresh()
     }
 
     private func bumpToTop(_ note: Note) {

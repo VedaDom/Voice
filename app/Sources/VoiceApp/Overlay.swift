@@ -130,21 +130,22 @@ struct OverlayView: View {
 
     private func glow(color: Color, size: CGSize, wRatio: Double,
                       boost: Double, w: CGFloat, h: CGFloat) -> some View {
-        // Radial gradient anchored at the bottom-center of its rect (.pen: center.y = 1)
-        Ellipse()
+        // Bottom-anchored bloom (.pen: radial gradient, center.y = 1). The
+        // voice level animates the gradient RADIUS — never the geometry — and
+        // the radius is capped just under the window height so the fade always
+        // completes inside the window: no hard clip line, however loud.
+        let radius = min(size.width * wRatio / 2 * boost, h - 12)
+        return Rectangle()
             .fill(
                 RadialGradient(
                     stops: [.init(color: color, location: 0),
                             .init(color: color.opacity(0), location: 1)],
-                    center: .center,
+                    center: .bottom,
                     startRadius: 0,
-                    endRadius: size.width * wRatio / 2
+                    endRadius: radius
                 )
             )
-            .frame(width: size.width, height: size.height * 2)
-            .scaleEffect(boost, anchor: .center)
-            .offset(y: size.height)
-            .frame(width: w, height: h, alignment: .bottom)
-            .blendMode(.normal)
+            .frame(width: w, height: h)
+            .allowsHitTesting(false)
     }
 }

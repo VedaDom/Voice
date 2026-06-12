@@ -16,7 +16,7 @@ class _StubEngine(worker.Engine):
         self._replies = replies
         self._i = 0
 
-    def _run_cleanup_llm(self, text, opts=None):
+    def _run_cleanup_llm(self, text, opts=None, context=""):
         reply = self._replies[self._i % len(self._replies)]
         self._i += 1
         return reply if reply is not None else text

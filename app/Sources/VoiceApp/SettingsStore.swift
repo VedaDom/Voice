@@ -33,6 +33,8 @@ final class SettingsStore: ObservableObject {
     @AppStorage("CleanupGrammar") var cleanupGrammar = false
     @AppStorage("CleanupPreserveStyle") var cleanupPreserveStyle = true
     @AppStorage("CleanupModelInstalled") var cleanupModelInstalled = false
+    /// "balanced" = LFM2.5-350M (fast) · "best" = bake-off winner (context fixes)
+    @AppStorage("CleanupTier") var cleanupTier = "balanced"
 
     // MARK: models / compute
     @AppStorage("LowPowerMode") var lowPowerMode = false
