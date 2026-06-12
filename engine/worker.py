@@ -126,9 +126,11 @@ class Engine:
         self.t0 = 0.0
         self.paused = False
         self.language = "en-US"
-        # cleanup LLM (loaded on demand)
+        # cleanup LLM (loaded on demand); "max" also loads a small draft model
+        # for speculative decoding (~1.5x faster at identical output)
         self.cleanup_model = None
         self.cleanup_tokenizer = None
+        self.cleanup_draft = None
         self.cleanup_tier = DEFAULT_CLEANUP_TIER
         self.shutting_down = False
 
@@ -439,14 +441,20 @@ class Engine:
             emit({"event": "cleanup_state", "state": "ready", "tier": tier})
             return
         try:
-            already = self._cleanup_cache_size(repo) > approx * 0.9
+            repos = [repo]
+            total = approx
+            if tier == "max":  # draft model downloads alongside the target
+                repos.append(CLEANUP_MODELS["best"][0])
+                total += CLEANUP_MODELS["best"][1]
+            size = lambda: sum(self._cleanup_cache_size(r) for r in repos)  # noqa: E731
+            already = size() > total * 0.9
             emit({"event": "cleanup_state", "state": "downloading", "pct": 0.0,
                   "tier": tier})
             done = threading.Event()
             if not already:
                 def poll():
                     while not done.is_set():
-                        pct = min(self._cleanup_cache_size(repo) / approx, 0.99)
+                        pct = min(size() / total, 0.99)
                         emit({"event": "cleanup_state", "state": "downloading",
                               "pct": round(pct, 3), "tier": tier})
                         done.wait(0.5)
@@ -455,9 +463,14 @@ class Engine:
             from mlx_lm import load as llm_load
 
             model, tokenizer = llm_load(repo)
+            draft = None
+            if tier == "max":
+                # E2B shares the Gemma tokenizer — drafts E4B ~1.5x faster
+                draft, _ = llm_load(CLEANUP_MODELS["best"][0])
             done.set()
             self.cleanup_model = model
             self.cleanup_tokenizer = tokenizer
+            self.cleanup_draft = draft
             self.cleanup_tier = tier
             self._run_cleanup_llm("ok")  # tiny warmup, compiles kernels
             emit({"event": "cleanup_state", "state": "ready", "tier": tier})
@@ -543,8 +556,24 @@ class Engine:
             kwargs["sampler"] = make_sampler(temp=0.0)
         except ImportError:
             pass
-        return generate(self.cleanup_model, self.cleanup_tokenizer,
-                        prompt=prompt, **kwargs)
+        if self.cleanup_draft is not None:
+            kwargs["draft_model"] = self.cleanup_draft
+        out = generate(self.cleanup_model, self.cleanup_tokenizer,
+                       prompt=prompt, **kwargs)
+        return self._sanitize_llm_output(out)
+
+    @staticmethod
+    def _sanitize_llm_output(out):
+        """Gemma 4 occasionally emits reasoning channels instead of the plain
+        answer. Keep only the final channel; a bare thought-dump becomes ""
+        so the similarity guard falls back to the original sentence."""
+        if "<|channel>" not in out:
+            return out
+        marker = "<|channel>final"
+        if marker in out:
+            out = out.rsplit(marker, 1)[1]
+            return out.split("<|channel>")[0].strip()
+        return ""
 
 
 def main():
